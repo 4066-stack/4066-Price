@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>UPS Store Tag Tool (Bottom Margin)</title>
+    <title>UPS Store Tag Tool</title>
     
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/bwip-js/3.0.4/bwip-js-min.js"></script>
@@ -125,7 +125,7 @@
             
             <div class="field">
                 <label>Price ($)</label>
-                <input type="text" id="itemPrice" placeholder="e.g. 0.90" autocomplete="off" 
+                <input type="text" id="itemPrice" placeholder="e.g. 0.90" maxlength="7" autocomplete="off" 
                        onblur="formatPriceInput(this)" />
             </div>
 
@@ -165,22 +165,35 @@
     });
 
     document.getElementById('itemPrice').addEventListener('input', function() {
+        // 1. Digits and Dots only
         let val = this.value.replace(/[^0-9.]/g, '');
+        
+        // 2. Prevent double dots
         const parts = val.split('.');
         if (parts.length > 2) val = parts[0] + '.' + parts.slice(1).join('');
+        
+        // 3. Limit decimal places to 2
         if (val.includes('.')) {
             const [int, dec] = val.split('.');
             if (dec.length > 2) val = int + '.' + dec.substring(0, 2);
         }
+        
+        // 4. Strict Length Limit (7 chars) while typing
+        if (val.length > 7) val = val.substring(0, 7);
+
         this.value = val;
         triggerPreview();
     });
 
+    // Format Price on Blur ("Smart Format")
     function formatPriceInput(input) {
         if (!input.value) return;
+        
         const num = parseFloat(input.value);
         if (!isNaN(num)) {
-            input.value = num.toFixed(2);
+            // Force .00 format regardless of length (even if > 7 chars)
+            const formatted = num.toFixed(2);
+            input.value = formatted;
             updatePreview();
         }
     }
@@ -190,7 +203,7 @@
         debounceTimer = setTimeout(updatePreview, 300);
     }
 
-    // --- 2. BARCODE GENERATOR ---
+    // --- 2. BARCODE GENERATOR (DATA MATRIX) ---
     function generateBarcodeData(sku) {
         if (!sku) return null;
         try {
@@ -228,6 +241,7 @@
         let displayPrice = rawPrice;
         const numPrice = parseFloat(rawPrice);
         if (!isNaN(numPrice)) {
+            // Force 2 decimal places on the tag
             displayPrice = numPrice.toFixed(2); 
         }
 
@@ -237,7 +251,7 @@
 
         // --- MARGIN LOGIC ---
         // Top: Small (0.05")
-        // Bottom: Large (0.75") to avoid disclaimer text
+        // Bottom: Large (0.75") for disclaimer
         // Sides: 0.04"
         const MARGIN_TOP = 0.05;
         const MARGIN_BOTTOM = 0.75; 
@@ -247,10 +261,10 @@
         const rows = 5;
         
         const printableWidth = 4 - (MARGIN_SIDE * 2);
-        const printableHeight = 6 - (MARGIN_TOP + MARGIN_BOTTOM); // Squished vertical area
+        const printableHeight = 6 - (MARGIN_TOP + MARGIN_BOTTOM);
         
         const tagWidth = printableWidth / cols;
-        const tagHeight = printableHeight / rows; // Tags will be shorter now
+        const tagHeight = printableHeight / rows;
 
         let col = 0;
         let row = 0;
@@ -273,9 +287,8 @@
             doc.text(displayName, centerX, y + 0.16, { align: "center" });
 
             // 3. Draw Barcode (Data Matrix)
-            // Slightly smaller/moved up to fit squished height
             if (imgData) {
-                // Height reduced slightly to 0.40 to save vertical space
+                // Height reduced slightly to fit squished tag
                 doc.addImage(imgData, 'PNG', centerX - 0.225, y + 0.22, 0.45, 0.40);
             }
 
@@ -289,7 +302,6 @@
             if (displayPrice) {
                 doc.setFontSize(14);
                 doc.setFont("helvetica", "bold");
-                // Anchored to bottom of tag minus offset
                 doc.text(`$${displayPrice}`, centerX, y + tagHeight - 0.10, { align: "center" });
             }
 
