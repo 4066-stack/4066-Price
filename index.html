@@ -125,7 +125,7 @@
             
             <div class="field">
                 <label>Price ($)</label>
-                <input type="text" id="itemPrice" placeholder="e.g. 0.90" maxlength="7" autocomplete="off" 
+                <input type="text" id="itemPrice" placeholder="e.g. 1,000.00" maxlength="10" autocomplete="off" 
                        onblur="formatPriceInput(this)" />
             </div>
 
@@ -165,34 +165,46 @@
     });
 
     document.getElementById('itemPrice').addEventListener('input', function() {
-        // 1. Digits and Dots only
-        let val = this.value.replace(/[^0-9.]/g, '');
+        // Remove non-numeric chars (except dot)
+        let raw = this.value.replace(/[^0-9.]/g, '');
         
-        // 2. Prevent double dots
-        const parts = val.split('.');
-        if (parts.length > 2) val = parts[0] + '.' + parts.slice(1).join('');
-        
-        // 3. Limit decimal places to 2
-        if (val.includes('.')) {
-            const [int, dec] = val.split('.');
-            if (dec.length > 2) val = int + '.' + dec.substring(0, 2);
+        // Prevent double dots
+        const parts = raw.split('.');
+        if (parts.length > 2) {
+            raw = parts[0] + '.' + parts.slice(1).join('');
         }
         
-        // 4. Strict Length Limit (7 chars) while typing
-        if (val.length > 7) val = val.substring(0, 7);
+        // --- LIMIT LOGIC (Max 99,999.99) ---
+        // 1. Limit Integer part to 5 digits
+        if (parts[0].length > 5) {
+            parts[0] = parts[0].substring(0, 5);
+            if (parts.length > 1) raw = parts[0] + "." + parts[1];
+            else raw = parts[0];
+        }
 
-        this.value = val;
+        // 2. Limit Decimal part to 2 digits
+        if (parts.length > 1 && parts[1].length > 2) {
+            parts[1] = parts[1].substring(0, 2);
+            raw = parts[0] + "." + parts[1];
+        }
+
+        this.value = raw;
         triggerPreview();
     });
 
-    // Format Price on Blur ("Smart Format")
+    // Format Price on Blur (Adds Commas + .00)
     function formatPriceInput(input) {
         if (!input.value) return;
         
-        const num = parseFloat(input.value);
+        const cleanVal = input.value.replace(/,/g, '');
+        const num = parseFloat(cleanVal);
+        
         if (!isNaN(num)) {
-            // Force .00 format regardless of length (even if > 7 chars)
-            const formatted = num.toFixed(2);
+            // Format with commas and 2 decimals
+            const formatted = num.toLocaleString('en-US', {
+                minimumFractionDigits: 2, 
+                maximumFractionDigits: 2 
+            });
             input.value = formatted;
             updatePreview();
         }
@@ -230,7 +242,7 @@
         document.getElementById('pdfPreview').src = "about:blank";
     }
 
-    // --- 4. PDF ENGINE (Squished Layout) ---
+    // --- 4. PDF ENGINE (Fixed 15 Tags) ---
     function createFullSheetPDF() {
         const name = document.getElementById('itemName').value.trim();
         let rawPrice = document.getElementById('itemPrice').value.trim();
@@ -239,10 +251,15 @@
         if (!name && !rawPrice && !sku) return null;
 
         let displayPrice = rawPrice;
-        const numPrice = parseFloat(rawPrice);
+        
+        // Display price with commas
+        const cleanVal = rawPrice.replace(/,/g, '');
+        const numPrice = parseFloat(cleanVal);
         if (!isNaN(numPrice)) {
-            // Force 2 decimal places on the tag
-            displayPrice = numPrice.toFixed(2); 
+            displayPrice = numPrice.toLocaleString('en-US', {
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2
+            });
         }
 
         const imgData = generateBarcodeData(sku);
@@ -275,9 +292,9 @@
             const y = MARGIN_TOP + (row * tagHeight);
             const centerX = x + (tagWidth/2);
             
-            // 1. Draw Border
+            // 1. Draw Border (Black)
             doc.setLineWidth(0.01);
-            doc.setDrawColor(0); // Full Black
+            doc.setDrawColor(0); 
             doc.rect(x, y, tagWidth, tagHeight);
 
             // 2. Draw Name
@@ -288,17 +305,15 @@
 
             // 3. Draw Barcode (Data Matrix)
             if (imgData) {
-                // Height reduced slightly to fit squished tag
                 doc.addImage(imgData, 'PNG', centerX - 0.225, y + 0.22, 0.45, 0.40);
             }
 
             // 4. Draw SKU Text
             doc.setFontSize(7);
             doc.setFont("helvetica", "normal");
-            // Moved up to y + 0.70
             doc.text(sku, centerX, y + 0.70, { align: "center" });
 
-            // 5. Draw Price
+            // 5. Draw Price (With Commas)
             if (displayPrice) {
                 doc.setFontSize(14);
                 doc.setFont("helvetica", "bold");
@@ -327,15 +342,16 @@
     function downloadPDF() {
         const doc = createFullSheetPDF();
         if (doc) {
-            // --- UPDATED FILENAME LOGIC: SKU-Price.pdf ---
+            // Filename Logic: SKU-Price.pdf (No commas in filename)
             let filename = "Tags.pdf";
             
             const sku = document.getElementById('itemSku').value.trim();
             const rawPrice = document.getElementById('itemPrice').value.trim();
             
-            // Format price to ensure it has decimals in filename (e.g. 0.90)
-            let priceStr = rawPrice;
-            const numPrice = parseFloat(rawPrice);
+            // Format price for filename (standard format, NO commas)
+            let priceStr = "";
+            const cleanVal = rawPrice.replace(/,/g, '');
+            const numPrice = parseFloat(cleanVal);
             if (!isNaN(numPrice)) {
                 priceStr = numPrice.toFixed(2);
             }
